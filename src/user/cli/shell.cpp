@@ -31,19 +31,11 @@ void Shell::init() {
     
     VGA::clear();
     
-    VGA::set_color(VGA::entry_color(10, 0));
-    VGA::println("  _   _ ____  ____  ___  ");
-    VGA::println(" | \\ | / ___||  _ \\|_ _| ");
-    VGA::println(" |  \\| \\___ \\| |_) || |  ");
-    VGA::println(" | |\\  |___)|  __/ | |  ");
-    VGA::println(" |_| \\_|____/|_|   |___| ");
-    
-    VGA::set_color(VGA::entry_color(14, 0));
-    VGA::println("");
-    VGA::println("   ZilOS v4.1 - Production Kernel");
-    VGA::println("   Type 'help' for available commands.");
-    VGA::println("   Use Shift+Up/Down or PageUp/PageDown to scroll.");
+    VGA::set_color(VGA::entry_color(11, 0));
+    VGA::println("=== ZilOS v4.1 ===");
     VGA::set_color(VGA::entry_color(7, 0));
+    VGA::println("Type 'help' for commands.");
+    VGA::println("Scroll: Shift+Up/Down or PgUp/PgDn");
     VGA::println("");
     print_prompt();
 }
