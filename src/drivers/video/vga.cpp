@@ -7,28 +7,33 @@ size_t VGA::column = 0;
 uint8_t VGA::color = 0;
 uint16_t* VGA::buffer = nullptr;
 
-// scrollback
-uint16_t VGA::scrollback[SCROLLBACK_LINES][VGA_WIDTH] = {0};
-size_t VGA::scrollback_start = 0;
+// scrollback - use separate display buffer
+uint16_t VGA::scrollback[SCROLLBACK_LINES][VGA_HEIGHT][VGA_WIDTH] = {0};
 size_t VGA::scrollback_count = 0;
 size_t VGA::scroll_offset = 0;
 bool VGA::in_scrollback = false;
 
-// init vga: setup initial state and clear screen fr
+// saved screen when scrolled up
+uint16_t VGA::saved_screen[VGA_HEIGHT][VGA_WIDTH] = {0};
+size_t VGA::saved_row = 0;
+size_t VGA::saved_column = 0;
+
+// init vga
 void VGA::initialize() {
     row = 0;
     column = 0;
     color = entry_color(VGA_COLOR_WHITE, VGA_COLOR_BLACK);
     buffer = (uint16_t*) 0xB8000;
-    scrollback_start = 0;
     scrollback_count = 0;
     scroll_offset = 0;
     in_scrollback = false;
+    saved_row = 0;
+    saved_column = 0;
     clear();
     enable_cursor(14, 15);
 }
 
-// clear: wipe screen with current bg color
+// clear screen
 void VGA::clear() {
     for (size_t y = 0; y < VGA_HEIGHT; y++) {
         for (size_t x = 0; x < VGA_WIDTH; x++) {
@@ -51,8 +56,34 @@ uint8_t VGA::entry_color(uint8_t fg, uint8_t bg) {
     return fg | (bg << 4);
 }
 
-// scroll: shift everything up by 1 line lol
+// scroll - shift up and save all lines to scrollback
 void VGA::scroll() {
+    if (in_scrollback) {
+        scroll_to_bottom();
+    }
+    
+    if (scrollback_count < SCROLLBACK_LINES) {
+        for (size_t y = 0; y < VGA_HEIGHT; y++) {
+            for (size_t x = 0; x < VGA_WIDTH; x++) {
+                scrollback[scrollback_count][y][x] = buffer[y * VGA_WIDTH + x];
+            }
+        }
+        scrollback_count++;
+    } else {
+        for (size_t i = 0; i < SCROLLBACK_LINES - 1; i++) {
+            for (size_t y = 0; y < VGA_HEIGHT; y++) {
+                for (size_t x = 0; x < VGA_WIDTH; x++) {
+                    scrollback[i][y][x] = scrollback[i+1][y][x];
+                }
+            }
+        }
+        for (size_t y = 0; y < VGA_HEIGHT; y++) {
+            for (size_t x = 0; x < VGA_WIDTH; x++) {
+                scrollback[SCROLLBACK_LINES-1][y][x] = buffer[y * VGA_WIDTH + x];
+            }
+        }
+    }
+    
     for (size_t y = 0; y < VGA_HEIGHT - 1; y++) {
         for (size_t x = 0; x < VGA_WIDTH; x++) {
             buffer[y * VGA_WIDTH + x] = buffer[(y + 1) * VGA_WIDTH + x];
@@ -64,88 +95,97 @@ void VGA::scroll() {
     row = VGA_HEIGHT - 1;
 }
 
-void VGA::add_to_scrollback() {
-    for (size_t x = 0; x < VGA_WIDTH; x++) {
-        scrollback[scrollback_start][x] = buffer[row * VGA_WIDTH + x];
-    }
-    scrollback_start = (scrollback_start + 1) % SCROLLBACK_LINES;
-    if (scrollback_count < SCROLLBACK_LINES) {
-        scrollback_count++;
-    }
-}
-
 void VGA::scroll_to_bottom() {
-    if (scroll_offset > 0) {
-        scroll_offset = 0;
-        in_scrollback = false;
-        for (size_t y = 0; y < VGA_HEIGHT; y++) {
-            for (size_t x = 0; x < VGA_WIDTH; x++) {
-                buffer[y * VGA_WIDTH + x] = ' ' | (color << 8);
-            }
+    if (!in_scrollback) return;
+    
+    in_scrollback = false;
+    scroll_offset = 0;
+    
+    for (size_t y = 0; y < VGA_HEIGHT; y++) {
+        for (size_t x = 0; x < VGA_WIDTH; x++) {
+            buffer[y * VGA_WIDTH + x] = saved_screen[y][x];
         }
-        row = 0;
-        column = 0;
-        update_cursor(0, 0);
     }
-}
-
-bool VGA::is_scrolled_up() {
-    return in_scrollback;
+    row = saved_row;
+    column = saved_column;
+    update_cursor(column, row);
 }
 
 void VGA::scroll_up() {
-    if (!in_scrollback && scrollback_count > 0) {
+    if (scrollback_count == 0) return;
+    
+    if (!in_scrollback) {
+        for (size_t y = 0; y < VGA_HEIGHT; y++) {
+            for (size_t x = 0; x < VGA_WIDTH; x++) {
+                saved_screen[y][x] = buffer[y * VGA_WIDTH + x];
+            }
+        }
+        saved_row = row;
+        saved_column = column;
         in_scrollback = true;
     }
     
-    if (in_scrollback && scroll_offset < scrollback_count - VGA_HEIGHT) {
+    if (scroll_offset < scrollback_count - 1) {
         scroll_offset++;
-    }
-    
-    render_scrollback();
-}
-
-void VGA::scroll_down() {
-    if (in_scrollback) {
-        if (scroll_offset > 0) {
-            scroll_offset--;
-        }
-        if (scroll_offset == 0) {
-            scroll_to_bottom();
-            return;
-        }
         render_scrollback();
     }
 }
 
+void VGA::scroll_down() {
+    if (!in_scrollback) return;
+    
+    if (scroll_offset > 0) {
+        scroll_offset--;
+        render_scrollback();
+    }
+    
+    if (scroll_offset == 0) {
+        scroll_to_bottom();
+    }
+}
+
 void VGA::scroll_page_up() {
-    for (int i = 0; i < VGA_HEIGHT - 1; i++) {
+    for (size_t i = 0; i < VGA_HEIGHT - 1; i++) {
         scroll_up();
     }
 }
 
 void VGA::scroll_page_down() {
-    for (int i = 0; i < VGA_HEIGHT - 1; i++) {
+    for (size_t i = 0; i < VGA_HEIGHT - 1; i++) {
         scroll_down();
     }
 }
 
 void VGA::render_scrollback() {
-    if (!in_scrollback) return;
+    if (scroll_offset == 0) {
+        scroll_to_bottom();
+        return;
+    }
     
-    for (size_t y = 0; y < VGA_HEIGHT; y++) {
-        size_t line_idx = (scrollback_start + scroll_offset + y) % SCROLLBACK_LINES;
-        if (scroll_offset + y >= scrollback_count) break;
-        
+    size_t start_idx = scroll_offset - 1;
+    size_t screen_line = 0;
+    
+    for (size_t i = start_idx; i < scrollback_count && screen_line < VGA_HEIGHT; i++) {
         for (size_t x = 0; x < VGA_WIDTH; x++) {
-            buffer[y * VGA_WIDTH + x] = scrollback[line_idx][x];
+            buffer[screen_line * VGA_WIDTH + x] = scrollback[i][screen_line][x];
+        }
+        screen_line++;
+    }
+    
+    for (size_t y = screen_line; y < VGA_HEIGHT; y++) {
+        for (size_t x = 0; x < VGA_WIDTH; x++) {
+            buffer[y * VGA_WIDTH + x] = ' ' | (color << 8);
         }
     }
     
-    update_cursor(column, row);
+    update_cursor(0, VGA_HEIGHT - 1);
 }
 
-// putchar: print single char; handle newline and stuff
+bool VGA::is_scrolled_up() {
+    return in_scrollback && scroll_offset > 0;
+}
+
+// putchar
 void VGA::putchar(char c) {
     if (in_scrollback && c != 0) {
         scroll_to_bottom();
@@ -154,7 +194,6 @@ void VGA::putchar(char c) {
     if (c == '\n') {
         column = 0;
         if (++row == VGA_HEIGHT) {
-            add_to_scrollback();
             scroll();
         }
     } else if (c == '\r') {
@@ -173,7 +212,6 @@ void VGA::putchar(char c) {
         if (++column == VGA_WIDTH) {
             column = 0;
             if (++row == VGA_HEIGHT) {
-                add_to_scrollback();
                 scroll();
             }
         }
@@ -198,22 +236,18 @@ void VGA::set_cursor(int x, int y) {
     update_cursor(x, y);
 }
 
-// enable_cursor: setup hardware cursor shape
 void VGA::enable_cursor(uint8_t cursor_start, uint8_t cursor_end) {
     outb(0x3D4, 0x0A);
     outb(0x3D5, (inb(0x3D5) & 0xC0) | cursor_start);
-
     outb(0x3D4, 0x0B);
     outb(0x3D5, (inb(0x3D5) & 0xE0) | cursor_end);
 }
 
-// disable_cursor: hide it idc
 void VGA::disable_cursor() {
     outb(0x3D4, 0x0A);
     outb(0x3D5, 0x20);
 }
 
-// update_cursor: move it to (x, y)
 void VGA::update_cursor(int x, int y) {
     uint16_t pos = y * VGA_WIDTH + x;
     outb(0x3D4, 0x0F);
@@ -222,7 +256,6 @@ void VGA::update_cursor(int x, int y) {
     outb(0x3D5, (uint8_t) ((pos >> 8) & 0xFF));
 }
 
-// itoa: int to string conv; basic but works ngl
 void VGA::itoa(size_t val, char* buf, int base) {
     char* p = buf;
     char* p1 = buf;

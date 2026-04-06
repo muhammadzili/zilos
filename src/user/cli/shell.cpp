@@ -29,14 +29,22 @@ void Shell::init() {
     buffer_pos = 0;
     prompt = "zilos> ";
     
-    VGA::set_color(VGA::entry_color(VGA_COLOR_WHITE, VGA_COLOR_BLACK));
-    
     VGA::clear();
-    VGA::println("======================================");
-    VGA::println("          Welcome to ZilOS!           ");
-    VGA::println("======================================");
-    VGA::println("Type 'help' for a list of commands.");
-    VGA::println("Tip: Use Shift+Up/Down to scroll output.");
+    
+    VGA::set_color(VGA::entry_color(10, 0));
+    VGA::println("  _   _ ____  ____  ___  ");
+    VGA::println(" | \\ | / ___||  _ \\|_ _| ");
+    VGA::println(" |  \\| \\___ \\| |_) || |  ");
+    VGA::println(" | |\\  |___)|  __/ | |  ");
+    VGA::println(" |_| \\_|____/|_|   |___| ");
+    
+    VGA::set_color(VGA::entry_color(14, 0));
+    VGA::println("");
+    VGA::println("   ZilOS v4.1 - Production Kernel");
+    VGA::println("   Type 'help' for available commands.");
+    VGA::println("   Use Shift+Up/Down or PageUp/PageDown to scroll.");
+    VGA::set_color(VGA::entry_color(7, 0));
+    VGA::println("");
     print_prompt();
 }
 
