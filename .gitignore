@@ -1,0 +1,14 @@
+# Build artifacts
+build/
+*.o
+*.bin
+*.iso
+*.img
+
+# Temp files
+*.swp
+*~
+.DS_Store
+
+# ISO build directory
+iso/
