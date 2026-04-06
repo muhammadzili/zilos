@@ -10,8 +10,8 @@ public:
     static char get_char();
     static char wait_get_char();
     static void wait_for_key();
+    static bool is_shift_pressed;
 private:
     static char scancode_to_ascii(uint8_t scancode);
-    static bool is_shift_pressed;
     static char last_char;
 };

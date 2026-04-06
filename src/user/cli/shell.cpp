@@ -3,6 +3,14 @@
 #include "drivers/input/keyboard.hpp"
 #include "user/cli/commands.hpp"
 
+// special key codes
+const char KEY_UP    = 0x80;
+const char KEY_DOWN  = 0x81;
+const char KEY_LEFT  = 0x82;
+const char KEY_RIGHT = 0x83;
+const char KEY_PAGE_UP   = 0x84;
+const char KEY_PAGE_DOWN = 0x85;
+
 char Shell::buffer[BUFFER_SIZE];
 size_t Shell::buffer_pos = 0;
 const char* Shell::prompt = "zilos> ";
@@ -21,7 +29,6 @@ void Shell::init() {
     buffer_pos = 0;
     prompt = "zilos> ";
     
-    // enforce pure black & white as requested; stay minimal fr
     VGA::set_color(VGA::entry_color(VGA_COLOR_WHITE, VGA_COLOR_BLACK));
     
     VGA::clear();
@@ -29,6 +36,7 @@ void Shell::init() {
     VGA::println("          Welcome to ZilOS!           ");
     VGA::println("======================================");
     VGA::println("Type 'help' for a list of commands.");
+    VGA::println("Tip: Use Shift+Up/Down to scroll output.");
     print_prompt();
 }
 
@@ -107,6 +115,27 @@ void Shell::execute_command() {
 
 void Shell::handle_input(char c) {
     if (c == 0) return;
+
+    if (c == KEY_PAGE_UP) {
+        VGA::scroll_page_up();
+        return;
+    }
+    if (c == KEY_PAGE_DOWN) {
+        VGA::scroll_page_down();
+        return;
+    }
+    if (c == KEY_UP) {
+        if (Keyboard::is_shift_pressed) {
+            VGA::scroll_up();
+        }
+        return;
+    }
+    if (c == KEY_DOWN) {
+        if (Keyboard::is_shift_pressed) {
+            VGA::scroll_down();
+        }
+        return;
+    }
 
     if (c == '\b') {
         if (buffer_pos > 0) {

@@ -1,17 +1,25 @@
 #include "drivers/input/keyboard.hpp"
 #include "utils/ports.hpp"
+#include "drivers/video/vga.hpp"
 
 // --- State Variables ---
 bool Keyboard::is_shift_pressed = false;
 char Keyboard::last_char = 0;
 
+// special key codes for shell
+const char KEY_UP    = 0x80;
+const char KEY_DOWN  = 0x81;
+const char KEY_LEFT  = 0x82;
+const char KEY_RIGHT = 0x83;
+const char KEY_PAGE_UP   = 0x84;
+const char KEY_PAGE_DOWN = 0x85;
+
 /**
  * @brief Interrupt Handler for Keyboard (IRQ 1)
  */
 void Keyboard::handler(registers* r) {
-    (void)r; // Unused parameter
+    (void)r;
     
-    // Check if the keyboard output buffer is full
     if (inb(0x64) & 0x01) {
         uint8_t scancode = inb(0x60);
         last_char = scancode_to_ascii(scancode);
@@ -47,12 +55,10 @@ void Keyboard::initialize() {
     is_shift_pressed = false;
     last_char = 0;
 
-    // Flush any pending data in the output buffer
     while (inb(0x64) & 0x01) {
         inb(0x60);
     }
 
-    // Register with Exception/Interrupt Manager (IRQ 1)
     register_interrupt_handler(33, Keyboard::handler);
 }
 
@@ -61,24 +67,29 @@ void Keyboard::initialize() {
  */
 char Keyboard::scancode_to_ascii(uint8_t scancode) {
     if (scancode & 0x80) {
-        // Key Release
         uint8_t release_code = scancode & 0x7F;
         if (release_code == 0x2A || release_code == 0x36) {
             is_shift_pressed = false;
         }
+        if (release_code == 0x48 || release_code == 0x50 || 
+            release_code == 0x4B || release_code == 0x4D ||
+            release_code == 0x49 || release_code == 0x51) {
+            return 0;
+        }
     } else {
-        // Key Press
         if (scancode == 0x2A || scancode == 0x36) {
             is_shift_pressed = true;
             return 0;
         }
 
-        // --- Special Key Mapping ---
-        if (scancode == 0x48) return (char)0x80; // Up Arrow
-        if (scancode == 0x50) return (char)0x81; // Down Arrow
-        if (scancode == 0x4B) return (char)0x82; // Left Arrow
-        if (scancode == 0x4D) return (char)0x83; // Right Arrow
-        if (scancode == 0x3C) return (char)0x84; // F2 Function
+        if (scancode == 0x48) return KEY_UP;
+        if (scancode == 0x50) return KEY_DOWN;
+        if (scancode == 0x4B) return KEY_LEFT;
+        if (scancode == 0x4D) return KEY_RIGHT;
+        if (scancode == 0x49) return KEY_PAGE_UP;
+        if (scancode == 0x51) return KEY_PAGE_DOWN;
+        
+        if (scancode == 0x3C) return (char)0x84;
 
         if (scancode < 128) {
             return is_shift_pressed ? kbd_US_shift[scancode] : kbd_US[scancode];
@@ -112,6 +123,6 @@ char Keyboard::wait_get_char() {
  */
 void Keyboard::wait_for_key() {
     while (!(inb(0x64) & 0x01)) {
-        asm volatile("pause"); // CPU optimization for busy loops
+        asm volatile("pause");
     }
 }
