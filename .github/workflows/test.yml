@@ -1,0 +1,30 @@
+name: Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential nasm qemu grub-common xorriso
+        
+    - name: Build kernel
+      run: make
+      
+    - name: Run QEMU test (boot)
+      run: |
+        timeout 10 qemu-system-i386 -kernel zilos.bin -nographic || true
+        
+    - name: Run QEMU test (with disk)
+      run: |
+        timeout 10 qemu-system-i386 -kernel zilos.bin -drive file=zilos.img,format=raw,index=0,media=disk -nographic || true

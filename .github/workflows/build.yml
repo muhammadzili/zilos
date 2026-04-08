@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential nasm qemu grub-common xorriso
+        
+    - name: Build kernel
+      run: make clean && make
+      
+    - name: Build ISO
+      run: make iso
+      
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: zilos-artifacts
+        path: |
+          zilos.bin
+          zilos.img
+          zilos.iso
+        retention-days: 7
+        
+    - name: Verify build output
+      run: |
+        ls -lh zilos.bin zilos.img zilos.iso
+        file zilos.bin zilos.iso

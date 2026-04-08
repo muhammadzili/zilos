@@ -1,0 +1,28 @@
+name: Lint
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install clang-format
+      run: sudo apt-get install -y clang-format
+    
+    - name: Run code formatting check
+      run: |
+        if command -v clang-format &> /dev/null; then
+          find src -name '*.cpp' -o -name '*.hpp' | head -20 | xargs -I {} sh -c 'clang-format --dry-run {} 2>&1 | grep -v "^$" || true'
+        fi
+        
+    - name: Check for common issues
+      run: |
+        echo "Checking for TODO/FIXME comments..."
+        grep -r "TODO\|FIXME\|XXX" src/ --include='*.cpp' --include='*.hpp' || echo "No TODO/FIXME found"

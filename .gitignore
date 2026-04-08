@@ -5,10 +5,22 @@ build/
 *.iso
 *.img
 
-# Temp files
+# ISO build directory
+iso/
+
+# Editor files
 *.swp
 *~
 .DS_Store
+*.swo
+*.swn
 
-# ISO build directory
-iso/
+# Git
+*.orig
+*.rej
+
+# OS
+Thumbs.db
+
+# Test output
+tests/*.log
