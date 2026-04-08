@@ -42,6 +42,7 @@ private:
     static void cmd_kill(const char* args);
     static void cmd_sysinfo();
     static void cmd_vmstat();
+    static void cmd_debug(const char* args);
 
     // Network commands
     static void cmd_ping(const char* args);

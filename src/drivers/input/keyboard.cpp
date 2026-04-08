@@ -101,28 +101,38 @@ char Keyboard::scancode_to_ascii(uint8_t scancode) {
 /**
  * @brief Non-blocking character fetch
  */
+/**
+ * @brief Non-blocking character fetch from interrupt buffer
+ */
 char Keyboard::get_char() {
-    if (inb(0x64) & 0x01) {
-        uint8_t scancode = inb(0x60);
-        return scancode_to_ascii(scancode);
-    }
-    return 0;
+    char c = last_char;
+    last_char = 0;
+    return c;
 }
 
 /**
  * @brief Blocking character fetch
  */
+/**
+ * @brief Blocking character fetch
+ */
 char Keyboard::wait_get_char() {
-    while (!(inb(0x64) & 0x01));
-    uint8_t scancode = inb(0x60);
-    return scancode_to_ascii(scancode);
+    while (last_char == 0) {
+        asm volatile("hlt");
+    }
+    char c = last_char;
+    last_char = 0;
+    return c;
 }
 
 /**
  * @brief Blocking wait for any key event
  */
+/**
+ * @brief Blocking wait for any key event
+ */
 void Keyboard::wait_for_key() {
-    while (!(inb(0x64) & 0x01)) {
-        asm volatile("pause");
+    while (last_char == 0) {
+        asm volatile("hlt");
     }
 }

@@ -1,6 +1,7 @@
 #include "kernel/scheduler.hpp"
 #include "kernel/memory.hpp"
 #include "arch/i386/timer.hpp"
+#include "drivers/video/vga.hpp"
 
 PCB* current = 0;
 PCB* ready_queue = 0;
@@ -42,7 +43,17 @@ void initialize() {
 }
 
 uint32_t create_task(void (*entry)(void), const char* name, uint32_t stack_size) {
-    if (task_count >= MAX_TASKS) return 0;
+    VGA::print("[create_task] ");
+    VGA::print(name);
+    VGA::print(" count=");
+    char buf[8];
+    VGA::itoa(task_count, buf, 10);
+    VGA::println(buf);
+    
+    if (task_count >= MAX_TASKS) {
+        VGA::println("[create_task] MAX_TASKS reached!");
+        return 0;
+    }
     
     PCB* task = &tasks[task_count++];
     task->pid = next_pid++;
@@ -60,6 +71,16 @@ uint32_t create_task(void (*entry)(void), const char* name, uint32_t stack_size)
     task->name[i] = '\0';
     
     task->stack_base = (uint32_t)Memory::Heap::allocate(stack_size);
+    VGA::print("[create_task] stack_base=");
+    VGA::itoa(task->stack_base, buf, 16);
+    VGA::println(buf);
+    
+    if (!task->stack_base) {
+        VGA::println("[create_task] FAILED - no heap memory!");
+        task_count--;
+        return 0;
+    }
+    
     task->stack_ptr = task->stack_base + stack_size - 4;
     
     uint32_t* stack = (uint32_t*)task->stack_ptr;
@@ -69,38 +90,44 @@ uint32_t create_task(void (*entry)(void), const char* name, uint32_t stack_size)
     task->next = ready_queue;
     ready_queue = task;
     
+    VGA::print("[create_task] success, pid=");
+    VGA::itoa(task->pid, buf, 10);
+    VGA::println(buf);
+    
     return task->pid;
 }
 
 void schedule() {
-    if (!current || !ready_queue) return;
-    
-    PCB* next = ready_queue;
-    while (next && next->next != current && next->next != 0) {
-        next = next->next;
+    if (!initialized || task_count == 0) return;
+
+    uint32_t start_idx = 0;
+    for (uint32_t i = 0; i < task_count; i++) {
+        if (&tasks[i] == current) {
+            start_idx = i;
+            break;
+        }
     }
-    
+
+    // Round-robin search for next READY task
+    uint32_t i = (start_idx + 1) % task_count;
+    PCB* next = &tasks[start_idx]; 
+
+    while (i != start_idx) {
+        if (tasks[i].state == TASK_READY || tasks[i].state == TASK_RUNNING) {
+            next = &tasks[i];
+            break;
+        }
+        i = (i + 1) % task_count;
+    }
+
     if (current && current->state == TASK_RUNNING) {
         current->state = TASK_READY;
     }
+
+    current = next;
+    current->state = TASK_RUNNING;
     
-    if (next && next->next) {
-        next->next = current->next;
-    } else {
-        ready_queue = current->next;
-    }
-    
-    if (current && current->state == TASK_READY) {
-        PCB* tail = next;
-        while (tail && tail->next) tail = tail->next;
-        if (tail) tail->next = current;
-        else ready_queue = current;
-    }
-    
-    current = ready_queue;
-    if (current) {
-        current->state = TASK_RUNNING;
-    }
+    // Note: full context_switch(old, new) would go here for real multitasking
 }
 
 void yield() {

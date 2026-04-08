@@ -16,6 +16,7 @@
 #include "kernel/scheduler.hpp"
 #include "kernel/memory.hpp"
 #include "arch/i386/timer.hpp"
+#include "drivers/input/keyboard.hpp"
 
 extern uint32_t system_ram_mb;
 
@@ -137,8 +138,8 @@ void Commands::execute(const char* cmd, const char* args) {
         cmd_sysinfo();
     } else if (strcmp(cmd, "vmstat")) {
         cmd_vmstat();
-    } else if (strcmp(cmd, "uptime")) {
-        cmd_uptime();
+    } else if (strcmp(cmd, "debug")) {
+        cmd_debug(args);
     } else {
         VGA::print("Unknown command: ");
         VGA::println(cmd);
@@ -374,6 +375,15 @@ void Commands::cmd_cpu() {
     
     VGA::print("CPU Vendor String: ");
     VGA::println(vendor);
+    
+    // Core count from CPUID 1
+    __asm__ volatile("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(1));
+    uint32_t logical_cores = (ebx >> 16) & 0xFF;
+    if (logical_cores == 0) logical_cores = 1;
+    
+    itoa(logical_cores, vendor, 10);
+    VGA::print("Logical Cores   : ");
+    VGA::println(vendor);
 }
 
 void Commands::cmd_memory() {
@@ -393,12 +403,27 @@ void Commands::cmd_storage() {
     VGA::println("Storage Information (VFS RAM Disk):");
     VGA::print("Used Storage: ");
     VGA::print(buf);
-    VGA::println(" bytes");
+    VGA::print(" bytes (");
+    itoa(used / (1024 * 1024), buf, 10);
+    VGA::print(buf);
+    VGA::println(" MB)");
     
-    itoa(MAX_FILES * (sizeof(VFile)), buf, 10);
+    uint32_t total_capacity = MAX_FILES * (sizeof(VFile));
+    itoa(total_capacity, buf, 10);
     VGA::print("Total VFS Capacity: ");
     VGA::print(buf);
-    VGA::println(" bytes");
+    VGA::print(" bytes (");
+    itoa(total_capacity / (1024 * 1024), buf, 10);
+    VGA::print(buf);
+    VGA::println(" MB)");
+    
+    if (total_capacity > 0) {
+        uint32_t pct = (used * 100) / total_capacity;
+        itoa(pct, buf, 10);
+        VGA::print("Usage Percentage: ");
+        VGA::print(buf);
+        VGA::println("%");
+    }
 }
 
 // ---- Network Commands ----
@@ -682,67 +707,112 @@ void Commands::cmd_ps() {
 }
 
 void Commands::cmd_top() {
-    VGA::println("top - ");
-    VGA::print("Tasks: ");
-    uint32_t count = get_task_count();
-    char buf[16];
-    itoa(count, buf, 10);
-    VGA::print(buf);
-    VGA::print(" total, ");
-    
-    uint32_t running = 0;
-    PCB* tasks = get_all_tasks();
-    for (uint32_t i = 0; i < count; i++) {
-        if (tasks[i].state == TASK_RUNNING) running++;
+    if (!initialized) {
+        VGA::println("top - Scheduler not initialized");
+        return;
     }
-    itoa(running, buf, 10);
-    VGA::print(buf);
-    VGA::println(" running");
     
-    VGA::print("Cpu(s): ");
-    itoa(running * 100 / (count ? count : 1), buf, 10);
-    VGA::print(buf);
-    VGA::println("% us");
+    VGA::clear();
+    VGA::disable_cursor();
     
-    VGA::print("Mem: ");
-    itoa(Memory::PMM::get_total_frames() * 4, buf, 10);
-    VGA::print(buf);
-    VGA::print("K total, ");
-    itoa(Memory::PMM::get_free_frames() * 4, buf, 10);
-    VGA::print(buf);
-    VGA::print("K free, ");
-    itoa(Memory::Heap::get_used() / 1024, buf, 10);
-    VGA::print(buf);
-    VGA::println("K used");
+    uint32_t last_idle = 0;
+    uint32_t last_total = 0;
     
-    VGA::println("");
-    VGA::println("  PID USER      PR  NI   VIRT   RES   SHR S %CPU %MEM");
-    VGA::println(" ------------------------------------------------");
-    
-    for (uint32_t i = 0; i < count; i++) {
-        if (tasks[i].state == TASK_DEAD) continue;
+    while (true) {
+        uint32_t count = get_task_count();
+        PCB* tasks = get_all_tasks();
+        uint32_t total_ticks = Timer::get_ticks();
+        uint32_t idle_ticks = 0;
         
-        itoa(tasks[i].pid, buf, 10);
+        for (uint32_t i = 0; i < count; i++) {
+            if (strcmp(tasks[i].name, "IDLE")) {
+                idle_ticks = tasks[i].ticks;
+            }
+        }
+        
+        VGA::set_cursor(0, 0);
+        VGA::print("top - REALTIME (Press 'q' to exit)           \n");
+        VGA::print("Tasks: ");
+        char buf[16];
+        itoa(count, buf, 10);
         VGA::print(buf);
-        VGA::print("  root      20   0     ");
-        
-        uint32_t virt = 0xC0000000 + (i * 0x10000);
-        itoa(virt, buf, 16);
+        VGA::print(" total, 1 running, ");
+        itoa(count - 1, buf, 10);
         VGA::print(buf);
-        VGA::print("  ");
+        VGA::println(" sleeping         ");
         
-        uint32_t mem_kb = tasks[i].stack_base ? 4 : 0;
-        itoa(mem_kb, buf, 10);
+        uint32_t diff_total = total_ticks - last_total;
+        uint32_t diff_idle = idle_ticks - last_idle;
+        uint32_t usage = 0;
+        if (diff_total > 0) {
+            if (diff_idle > diff_total) diff_idle = diff_total;
+            usage = 100 - (diff_idle * 100 / diff_total);
+        }
+        
+        VGA::print("Cpu(s): ");
+        itoa(usage, buf, 10);
         VGA::print(buf);
-        VGA::print("K ");
+        VGA::println("% us, 0.0% sy          ");
         
-        if (tasks[i].state == TASK_RUNNING) VGA::print("R ");
-        else if (tasks[i].state == TASK_BLOCKED) VGA::print("S ");
-        else VGA::print("I ");
+        uint32_t total_frames = Memory::PMM::get_total_frames();
+        uint32_t free_frames = Memory::PMM::get_free_frames();
+        uint32_t mem_total_kb = total_frames * 4;
+        uint32_t mem_used_kb = (total_frames - free_frames) * 4;
         
-        VGA::print("0.0 ");
-        itoa(mem_kb * 100 / (Memory::PMM::get_total_frames() * 4), buf, 10);
-        VGA::println(buf);
+        VGA::print("Mem: ");
+        if (mem_total_kb < 1024) {
+            itoa(mem_total_kb, buf, 10); VGA::print(buf); VGA::print("K total, ");
+            itoa(mem_used_kb, buf, 10); VGA::print(buf); VGA::println("K used          ");
+        } else {
+            itoa(mem_total_kb / 1024, buf, 10); VGA::print(buf); VGA::print("M total, ");
+            itoa(mem_used_kb / 1024, buf, 10); VGA::print(buf); VGA::println("M used          ");
+        }
+        
+        VGA::println("\n  PID  NAME         STATE      TICKS  MEM");
+        VGA::println(" ------------------------------------------------");
+        
+        for (uint32_t i = 0; i < count; i++) {
+            if (tasks[i].pid == 0) continue;
+            
+            itoa(tasks[i].pid, buf, 10);
+            VGA::print(" ");
+            if (tasks[i].pid < 10) VGA::print(" ");
+            VGA::print(buf);
+            VGA::print("  ");
+            
+            VGA::print(tasks[i].name);
+            int len = 0;
+            while (tasks[i].name[len] && len < 12) len++;
+            for (int p = len; p < 12; p++) VGA::print(" ");
+            
+            uint32_t state = tasks[i].state;
+            if (state == TASK_RUNNING) VGA::print("RUNNING   ");
+            else if (state == TASK_READY) VGA::print("READY     ");
+            else if (state == TASK_BLOCKED) VGA::print("BLOCKED   ");
+            else VGA::print("DEAD      ");
+            
+            itoa(tasks[i].ticks, buf, 10);
+            VGA::print(buf);
+            for (int p = 0; buf[p]; p++) len = p;
+            for (int p = len; p < 6; p++) VGA::print(" ");
+            
+            uint32_t mem_kb = tasks[i].stack_base ? 4 : 0;
+            itoa(mem_kb, buf, 10);
+            VGA::println(buf);
+        }
+        
+        last_total = total_ticks;
+        last_idle = idle_ticks;
+        
+        // Non-blocking wait with exit check
+        for (int i = 0; i < 10; i++) {
+            if (Keyboard::get_char() == 'q') {
+                VGA::clear();
+                VGA::enable_cursor(14, 15);
+                return;
+            }
+            Timer::sleep(100);
+        }
     }
 }
 
@@ -872,4 +942,98 @@ void Commands::cmd_vmstat() {
     VGA::print("uptime: ");
     itoa(Timer::get_ticks() / 100, buf, 10);
     VGA::println(buf);
+}
+
+extern "C" void test_task_1() {
+    volatile int c = 0;
+    while (c < 10000000) c++;
+}
+
+extern "C" void test_task_2() {
+    volatile int c = 0;
+    while (c < 10000000) c++;
+}
+
+extern "C" void test_task_3() {
+    volatile int c = 0;
+    while (c < 10000000) c++;
+}
+
+void Commands::cmd_debug(const char* args) {
+    char buf[16];
+    
+    if (!args[0] || strcmp(args, "status")) {
+        VGA::println("=== Debug Status ===");
+        VGA::print("Scheduler initialized: ");
+        VGA::println(initialized ? "Yes" : "No");
+        VGA::print("Current PID: ");
+        if (current) {
+            itoa(current->pid, buf, 10);
+            VGA::println(buf);
+        } else {
+            VGA::println("None");
+        }
+        VGA::print("Total tasks: ");
+        itoa(get_task_count(), buf, 10);
+        VGA::println(buf);
+        VGA::print("PMM total frames: ");
+        itoa(Memory::PMM::get_total_frames(), buf, 10);
+        VGA::println(buf);
+        VGA::print("PMM free frames: ");
+        itoa(Memory::PMM::get_free_frames(), buf, 10);
+        VGA::println(buf);
+        VGA::print("Heap used: ");
+        itoa(Memory::Heap::get_used(), buf, 10);
+        VGA::println(buf);
+        VGA::print("Timer ticks: ");
+        itoa(Timer::get_ticks(), buf, 10);
+        VGA::println(buf);
+        return;
+    }
+    
+    if (strcmp(args, "tasks")) {
+        VGA::println("=== Task List ===");
+        PCB* tasks = get_all_tasks();
+        uint32_t count = get_task_count();
+        for (uint32_t i = 0; i < count; i++) {
+            VGA::print("Task ");
+            itoa(i, buf, 10);
+            VGA::print(buf);
+            VGA::print(": PID=");
+            itoa(tasks[i].pid, buf, 10);
+            VGA::print(buf);
+            VGA::print(" name=");
+            VGA::print(tasks[i].name);
+            VGA::print(" state=");
+            if (tasks[i].state == TASK_RUNNING) VGA::print("RUNNING");
+            else if (tasks[i].state == TASK_READY) VGA::print("READY");
+            else if (tasks[i].state == TASK_BLOCKED) VGA::print("BLOCKED");
+            else if (tasks[i].state == TASK_DEAD) VGA::print("DEAD");
+            else VGA::print("UNKNOWN");
+            VGA::print(" ticks=");
+            itoa(tasks[i].ticks, buf, 10);
+            VGA::println(buf);
+        }
+        return;
+    }
+    
+    if (strcmp(args, "test")) {
+        VGA::println("Creating test tasks...");
+        
+        uint32_t pid1 = create_task(test_task_1, "test1", 4096);
+        uint32_t pid2 = create_task(test_task_2, "test2", 4096);
+        uint32_t pid3 = create_task(test_task_3, "test3", 4096);
+        
+        VGA::print("Created tasks: ");
+        itoa(pid1, buf, 10); VGA::print(buf); VGA::print(", ");
+        itoa(pid2, buf, 10); VGA::print(buf); VGA::print(", ");
+        itoa(pid3, buf, 10); VGA::println(buf);
+        
+        VGA::print("Total tasks now: ");
+        itoa(get_task_count(), buf, 10);
+        VGA::println(buf);
+        return;
+    }
+    
+    VGA::println("Usage: debug [status|tasks|test]");
 }
