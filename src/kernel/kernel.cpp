@@ -39,7 +39,7 @@ extern "C" void kernel_main(uint32_t magic, multiboot_info* mbd) {
     IDT::initialize();
     VGA::initialize(); 
     
-    VGA::println("ZilOS Test 1.0 - CLI Kernel");
+    VGA::println("ZilOS v1.1 - CLI Kernel");
     VGA::println("GDT and IDT active.");
     
     Keyboard::initialize();

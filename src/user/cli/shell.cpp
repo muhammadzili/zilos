@@ -32,7 +32,7 @@ void Shell::init() {
     VGA::clear();
     
     VGA::set_color(VGA::entry_color(11, 0));
-    VGA::println("=== ZilOS v4.1 ===");
+    VGA::println("=== ZilOS v1.1 ===");
     VGA::set_color(VGA::entry_color(7, 0));
     VGA::println("Type 'help' for commands.");
     VGA::println("Scroll: Shift+Up/Down or PgUp/PgDn");
