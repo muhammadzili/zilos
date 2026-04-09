@@ -117,25 +117,23 @@ void Installer::screen_sysinfo() {
 void Installer::screen_network() {
     draw_box(15, 6, 50, 10, 7);
     draw_text_centered(8, "Network Configuration", 0, 7);
-    draw_text_centered(10, "Initializing RTL8139...", 0, 7);
-    inst_delay(500);
+    inst_delay(300);
 
     bool network_ok = false;
     
-    // spinner animation: ts looks professional ngl
     const char* spinner = "\\|/-";
-    for(int i=0; i<8; i++) {
-        draw_box(15, 12, 50, 1, 7);
+    for(int i=0; i<6; i++) {
+        draw_box(15, 10, 50, 1, 7);
         char buf[32] = "Discovering DHCP...  ";
         buf[20] = spinner[i % 4];
         buf[21] = '\0';
-        draw_text_centered(12, buf, 1, 7);
-        inst_delay(200);
+        draw_text_centered(10, buf, 1, 7);
+        inst_delay(150);
     }
     
-    draw_box(15, 12, 50, 3, 7); // clear spinner fr
+    draw_box(15, 10, 50, 3, 7);
     
-    if (RTL8139::init()) {
+    if (RTL8139::is_available()) {
         uint8_t mac[6];
         RTL8139::get_mac(mac);
         net_memcpy(net_config.mac, mac, 6);

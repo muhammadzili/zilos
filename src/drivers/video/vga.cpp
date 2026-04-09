@@ -230,6 +230,18 @@ void VGA::println(const char* str) {
     putchar('\n');
 }
 
+void VGA::print_hex(uint32_t val) {
+    const char* hex = "0123456789ABCDEF";
+    for (int i = 7; i >= 0; i--) {
+        putchar(hex[(val >> (i * 4)) & 0xF]);
+    }
+}
+
+void VGA::println_hex(uint32_t val) {
+    print_hex(val);
+    putchar('\n');
+}
+
 void VGA::set_cursor(int x, int y) {
     column = x;
     row = y;

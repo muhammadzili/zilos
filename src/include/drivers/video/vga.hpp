@@ -16,6 +16,8 @@ public:
     static void putchar(char c);
     static void print(const char* str);
     static void println(const char* str);
+    static void print_hex(uint32_t val);
+    static void println_hex(uint32_t val);
     static void itoa(size_t val, char* buf, int base);
 
     static void scroll_up();

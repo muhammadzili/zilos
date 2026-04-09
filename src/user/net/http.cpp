@@ -16,24 +16,27 @@ void HTTP::str_cpy(char* dst, const char* src) {
     *dst = '\0';
 }
 
-// parse_url: extract host, path, port fr url idc about complexity
-bool HTTP::parse_url(const char* url, char* host, char* path, uint16_t* port) {
+bool HTTP::parse_url(const char* url, char* host, char* path, uint16_t* port, bool* is_https) {
     *port = 80;
-    // skip http prefix fr
+    *is_https = false;
     int i = 0;
-    if (url[0]=='h' && url[1]=='t' && url[2]=='t' && url[3]=='p' &&
-        url[4]==':' && url[5]=='/' && url[6]=='/') {
+    
+    if (url[0]=='h' && url[1]=='t' && url[2]=='t' && url[3]=='p' && url[4]=='s' &&
+        url[5]==':' && url[6]=='/' && url[7]=='/') {
+        *is_https = true;
+        *port = 443;
+        i = 8;
+    } else if (url[0]=='h' && url[1]=='t' && url[2]=='t' && url[3]=='p' &&
+               url[4]==':' && url[5]=='/' && url[6]=='/') {
         i = 7;
     }
 
-    // extract host name ngl
     int h = 0;
     while (url[i] && url[i] != '/' && url[i] != ':') {
         host[h++] = url[i++];
     }
     host[h] = '\0';
 
-    // optional port override fr
     if (url[i] == ':') {
         i++;
         *port = 0;
@@ -43,7 +46,6 @@ bool HTTP::parse_url(const char* url, char* host, char* path, uint16_t* port) {
         }
     }
 
-    // path part idc if its just /
     if (url[i] == '/') {
         str_cpy(path, url + i);
     } else {
@@ -53,34 +55,40 @@ bool HTTP::parse_url(const char* url, char* host, char* path, uint16_t* port) {
     return h > 0;
 }
 
-// get: download file via http; ts is sync and simple fr
+static bool resolve_host(const char* host, uint8_t* server_ip) {
+    if (ip_parse(host, server_ip)) {
+        return true;
+    }
+    VGA::print("Resolving "); VGA::print(host); VGA::println("...");
+    return DNS::resolve(host, server_ip);
+}
+
 bool HTTP::get(const char* url, const char* save_filename) {
     char host[128] = {0};
     char path[256] = {0};
     uint16_t port = 80;
+    bool is_https = false;
 
-    if (!parse_url(url, host, path, &port)) {
+    if (!parse_url(url, host, path, &port, &is_https)) {
         VGA::println("Error: Invalid URL");
         return false;
     }
 
-    // resolve host; hit dns if required fr
+    if (is_https) {
+        VGA::println("Error: HTTPS is not supported. Please use HTTP.");
+        return false;
+    }
+
     uint8_t server_ip[4];
-    if (ip_parse(host, server_ip)) {
-        // host is already ip idc
-    } else {
-        VGA::print("Resolving "); VGA::print(host); VGA::println("...");
-        if (!DNS::resolve(host, server_ip)) {
-            VGA::println("Error: DNS resolution failed");
-            return false;
-        }
+    if (!resolve_host(host, server_ip)) {
+        VGA::println("Error: DNS resolution failed");
+        return false;
     }
 
     char ip_str[16];
     ip_to_str(server_ip, ip_str);
     VGA::print("Connecting to "); VGA::print(ip_str); VGA::println("...");
 
-    // tcp handshake fr
     int conn = TCP::connect(server_ip, port);
     if (conn < 0) {
         VGA::println("Error: TCP connection failed");
@@ -89,7 +97,6 @@ bool HTTP::get(const char* url, const char* save_filename) {
 
     VGA::println("Connected. Sending HTTP GET...");
 
-    // build request manually idc about efficiency fr
     char request[512];
     int pos = 0;
 
@@ -107,14 +114,13 @@ bool HTTP::get(const char* url, const char* save_filename) {
 
     TCP::send(conn, request, pos);
 
-    // receive response idc if it takes time fr
-    char response[MAX_FILESIZE];
+    char response[8192];
     int total = 0;
     int received;
 
-    while ((received = TCP::receive(conn, response + total, MAX_FILESIZE - total - 1)) > 0) {
+    while ((received = TCP::receive(conn, response + total, 8192 - total - 1)) > 0) {
         total += received;
-        if (total >= MAX_FILESIZE - 1) break;
+        if (total >= 8192 - 1) break;
     }
     response[total] = '\0';
 
@@ -125,7 +131,6 @@ bool HTTP::get(const char* url, const char* save_filename) {
         return false;
     }
 
-    // find body start; skip headers fr
     char* body = response;
     for (int i = 0; i < total - 3; i++) {
         if (response[i] == '\r' && response[i+1] == '\n' &&
@@ -135,7 +140,6 @@ bool HTTP::get(const char* url, const char* save_filename) {
         }
     }
 
-    // save to vfs; overwrite if exists fr
     VFile* existing = VFS::get_file(save_filename);
     if (!existing) {
         VFS::create_file(save_filename, false);
@@ -144,7 +148,6 @@ bool HTTP::get(const char* url, const char* save_filename) {
 
     int body_len = total - (body - response);
     char buf[16];
-    // simple itoa for size display fr
     int bi = 0;
     int tmp = body_len;
     if (tmp == 0) buf[bi++] = '0';
@@ -160,3 +163,4 @@ bool HTTP::get(const char* url, const char* save_filename) {
 
     return true;
 }
+

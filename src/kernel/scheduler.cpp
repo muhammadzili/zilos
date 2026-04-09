@@ -25,6 +25,7 @@ void initialize() {
     idle->priority = 0;
     idle->time_slice = 10;
     idle->ticks = 0;
+    idle->total_ticks = 0;
     idle->stack_base = 0;
     idle->stack_ptr = 0;
     idle->kernel_mode = true;
@@ -61,6 +62,7 @@ uint32_t create_task(void (*entry)(void), const char* name, uint32_t stack_size)
     task->priority = 1;
     task->time_slice = 20;
     task->ticks = 0;
+    task->total_ticks = 0;
     task->kernel_mode = true;
     
     uint32_t i = 0;
@@ -135,10 +137,21 @@ void yield() {
 }
 
 void sleep(uint32_t ms) {
-    if (current) {
-        current->state = TASK_BLOCKED;
+    PCB* curr = current;
+    if (curr) {
+        curr->state = TASK_BLOCKED;
     }
     schedule();
+    
+    uint32_t start = Timer::get_ticks();
+    while (Timer::get_ticks() - start < ms) {
+        asm volatile ("hlt");
+    }
+    
+    if (curr) {
+        curr->state = TASK_RUNNING;
+        current = curr;
+    }
 }
 
 PCB* get_current() {
@@ -148,6 +161,7 @@ PCB* get_current() {
 void tick() {
     if (current) {
         current->ticks++;
+        current->total_ticks++;
         if (current->ticks >= current->time_slice) {
             current->ticks = 0;
             yield();

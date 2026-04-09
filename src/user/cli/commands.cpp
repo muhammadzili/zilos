@@ -193,7 +193,7 @@ void Commands::cmd_help() {
 void Commands::cmd_clear() { VGA::clear(); }
 void Commands::cmd_echo(const char* args) { VGA::println(args ? args : ""); }
 void Commands::cmd_about() {
-    VGA::println("ZilOS v4.0 - Network Edition");
+    VGA::println("ZilOS v1.1 - Network Edition");
     VGA::println("A pure CLI operating system with TCP/IP.");
     VGA::println("Created for Zill.");
 }
@@ -208,7 +208,7 @@ void Commands::cmd_pwd() {
 }
 
 void Commands::cmd_uname() {
-    VGA::println("ZilOS v4.0-generic i386");
+    VGA::println("ZilOS v1.1-generic i386");
 }
 
 void Commands::cmd_whoami() {
@@ -225,7 +225,7 @@ void Commands::cmd_uptime() {
 }
 
 void Commands::cmd_dmesg() {
-    VGA::println("[0.000000] ZilOS v4.0 CLI Kernel Booting");
+    VGA::println("[0.000000] ZilOS v1.1 CLI Kernel Booting");
     VGA::println("[0.000000] Initializing GDT... OK");
     VGA::println("[0.000000] Initializing IDT... OK");
     VGA::println("[0.000000] Initializing VGA... OK");
@@ -691,7 +691,7 @@ void Commands::cmd_ps() {
         else if (state == TASK_BLOCKED) VGA::print("BLOCKED ");
         else VGA::print("UNKNOWN ");
         
-        itoa(tasks[i].ticks, pid_str, 10);
+        itoa(tasks[i].total_ticks, pid_str, 10);
         VGA::print(pid_str);
         VGA::print("     ");
         
@@ -726,7 +726,7 @@ void Commands::cmd_top() {
         
         for (uint32_t i = 0; i < count; i++) {
             if (strcmp(tasks[i].name, "IDLE")) {
-                idle_ticks = tasks[i].ticks;
+                idle_ticks = tasks[i].total_ticks;
             }
         }
         
@@ -791,7 +791,7 @@ void Commands::cmd_top() {
             else if (state == TASK_BLOCKED) VGA::print("BLOCKED   ");
             else VGA::print("DEAD      ");
             
-            itoa(tasks[i].ticks, buf, 10);
+            itoa(tasks[i].total_ticks, buf, 10);
             VGA::print(buf);
             for (int p = 0; buf[p]; p++) len = p;
             for (int p = len; p < 6; p++) VGA::print(" ");
@@ -811,7 +811,7 @@ void Commands::cmd_top() {
                 VGA::enable_cursor(14, 15);
                 return;
             }
-            Timer::sleep(100);
+            ::sleep(100); // System sleep to yield execution to IDLE task
         }
     }
 }
@@ -846,7 +846,7 @@ void Commands::cmd_sysinfo() {
     VGA::println("");
     
     VGA::println("ZilOS Kernel Information:");
-    VGA::print("  Version    : "); VGA::println("v4.0.1-stable");
+    VGA::print("  Version    : "); VGA::println("v1.1-stable");
     VGA::print("  Build Date : "); VGA::println(__DATE__);
     VGA::print("  Architecture: "); VGA::println("i386 (32-bit)");
     VGA::print("  Compiler   : "); VGA::println("GCC");

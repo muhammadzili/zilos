@@ -14,6 +14,7 @@ struct PCB {
     uint32_t priority;
     uint32_t time_slice;
     uint32_t ticks;
+    uint32_t total_ticks;
     uint32_t stack_base;
     uint32_t stack_ptr;
     bool kernel_mode;

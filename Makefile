@@ -18,7 +18,7 @@ SRC_CXX = $(wildcard src/kernel/*.cpp) \
           $(wildcard src/net/*.cpp) \
           $(wildcard src/user/apps/*.cpp) \
           $(wildcard src/user/cli/*.cpp) \
-          $(wildcard src/user/net/*.cpp)
+          src/user/net/http.cpp
 
 OBJ_CXX = $(patsubst src/%.cpp, build/%.o, $(SRC_CXX))
 
@@ -69,6 +69,12 @@ run: zilos.bin zilos.img
 
 run-net: zilos.bin zilos.img
 	qemu-system-i386 -kernel zilos.bin -drive file=zilos.img,format=raw,index=0,media=disk -netdev user,id=n0 -device rtl8139,netdev=n0
+
+run-iso-net: iso
+	qemu-system-i386 -cdrom zilos.iso -netdev user,id=n0 -device rtl8139,netdev=n0
+
+run-iso: iso
+	qemu-system-i386 -cdrom zilos.iso
 
 iso: zilos.bin
 	mkdir -p iso/boot/grub
